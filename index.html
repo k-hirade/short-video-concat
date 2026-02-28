@@ -38,6 +38,14 @@
         </div>
       </section>
 
+      <section class="audio-panel">
+        <h2>音声</h2>
+        <label class="audio-toggle">
+          <input id="includeAudio" type="checkbox" checked />
+          <span>音声ありで出力する（デフォルト）</span>
+        </label>
+      </section>
+
       <form id="mergeForm" novalidate>
         <div id="inputsContainer" class="inputs"></div>
         <button id="mergeBtn" type="submit" class="primary">結合してダウンロード</button>
@@ -45,7 +53,7 @@
 
       <p id="status" class="status">準備完了</p>
       <a id="downloadLink" class="download hidden" href="#">結合済み動画をダウンロード</a>
-      <p class="note">簡易実装のため、出力は無音（音声なし）です。内部で全入力を再エンコードして連結します。</p>
+      <p class="note">内部で全入力を再エンコードして連結します。</p>
     </main>
 
     <script type="module" src="/src/main.js"></script>

@@ -85,6 +85,31 @@ h1 {
   width: 100%;
 }
 
+.audio-panel {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.audio-panel h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.audio-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.audio-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
 .count-buttons {
   display: flex;
   gap: 8px;

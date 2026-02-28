@@ -16,6 +16,7 @@ const increaseBtn = document.getElementById("increaseBtn");
 const decreaseBtn = document.getElementById("decreaseBtn");
 const coverImageInput = document.getElementById("coverImage");
 const coverSecondsInput = document.getElementById("coverSeconds");
+const includeAudioInput = document.getElementById("includeAudio");
 const inputsContainer = document.getElementById("inputsContainer");
 const mergeForm = document.getElementById("mergeForm");
 const mergeBtn = document.getElementById("mergeBtn");
@@ -56,6 +57,7 @@ function setLoading(isLoading) {
   mergeBtn.disabled = isLoading;
   coverImageInput.disabled = isLoading;
   coverSecondsInput.disabled = isLoading || !coverImageInput.files?.[0];
+  includeAudioInput.disabled = isLoading;
   increaseBtn.disabled = isLoading || currentSlots >= MAX_SLOTS;
   decreaseBtn.disabled = isLoading || currentSlots <= MIN_SLOTS;
 }
@@ -84,15 +86,45 @@ function clearDownloadLink() {
   downloadLink.href = "#";
 }
 
-function buildFilter(streamCount) {
+function buildFilter({ streamCount, includeAudio, introDuration, hasIntroImage }) {
   const filters = [];
+
   for (let i = 0; i < streamCount; i += 1) {
     filters.push(
-      `[${i}:v]scale=${TARGET_WIDTH}:${TARGET_HEIGHT}:force_original_aspect_ratio=decrease,pad=${TARGET_WIDTH}:${TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p,setsar=1[v${i}]`
+      `[${i}:v]scale=${TARGET_WIDTH}:${TARGET_HEIGHT}:force_original_aspect_ratio=decrease,pad=${TARGET_WIDTH}:${TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p,setsar=1,setpts=PTS-STARTPTS[v${i}]`
     );
   }
-  const concatInputs = Array.from({ length: streamCount }, (_, i) => `[v${i}]`).join("");
-  filters.push(`${concatInputs}concat=n=${streamCount}:v=1:a=0[vout]`);
+
+  if (!includeAudio) {
+    const concatInputs = Array.from({ length: streamCount }, (_, i) => `[v${i}]`).join("");
+    filters.push(`${concatInputs}concat=n=${streamCount}:v=1:a=0[vout]`);
+    return filters.join(";");
+  }
+
+  const audioLabels = [];
+  for (let segment = 0; segment < streamCount; segment += 1) {
+    const audioLabel = `a${segment}`;
+    const isIntroSegment = hasIntroImage && segment === 0;
+
+    if (isIntroSegment) {
+      const seconds = Math.max(MIN_INTRO_SECONDS, introDuration);
+      filters.push(
+        `anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=${seconds},asetpts=N/SR/TB[${audioLabel}]`
+      );
+    } else {
+      const inputIndex = segment;
+      filters.push(
+        `[${inputIndex}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aresample=48000,asetpts=PTS-STARTPTS[${audioLabel}]`
+      );
+    }
+    audioLabels.push(audioLabel);
+  }
+
+  const concatPairs = [];
+  for (let i = 0; i < streamCount; i += 1) {
+    concatPairs.push(`[v${i}]`, `[${audioLabels[i]}]`);
+  }
+  filters.push(`${concatPairs.join("")}concat=n=${streamCount}:v=1:a=1[vout][aout]`);
   return filters.join(";");
 }
 
@@ -157,6 +189,7 @@ mergeForm.addEventListener("submit", async (event) => {
   clearDownloadLink();
 
   const introImageFile = coverImageInput.files?.[0] || null;
+  const includeAudio = includeAudioInput.checked;
   let introSeconds = 0;
   if (introImageFile) {
     const parsedSeconds = readIntroSeconds();
@@ -213,15 +246,22 @@ mergeForm.addEventListener("submit", async (event) => {
 
     args.push(
       "-filter_complex",
-      buildFilter(streamCount),
+      buildFilter({
+        streamCount,
+        includeAudio,
+        introDuration: introSeconds,
+        hasIntroImage: Boolean(introImageFile)
+      }),
       "-map",
       "[vout]",
+      ...(includeAudio ? ["-map", "[aout]"] : []),
       "-c:v",
       "libx264",
       "-preset",
       "veryfast",
       "-crf",
       "23",
+      ...(includeAudio ? ["-c:a", "aac", "-b:a", "192k"] : []),
       "-movflags",
       "+faststart",
       outputName
@@ -239,10 +279,14 @@ mergeForm.addEventListener("submit", async (event) => {
     downloadLink.href = latestBlobUrl;
     downloadLink.download = "merged.mp4";
     downloadLink.classList.remove("hidden");
-    setStatus("結合完了。ダウンロードできます。");
+    setStatus(includeAudio ? "結合完了（音声あり）。ダウンロードできます。" : "結合完了（音声なし）。ダウンロードできます。");
   } catch (error) {
     const message = error instanceof Error ? error.message : "結合に失敗しました";
-    setStatus(`結合に失敗しました: ${message}`);
+    if (includeAudio) {
+      setStatus(`結合に失敗しました: ${message}。音声なし設定でも試してください。`);
+    } else {
+      setStatus(`結合に失敗しました: ${message}`);
+    }
   } finally {
     for (const name of tempInputNames) {
       try {
